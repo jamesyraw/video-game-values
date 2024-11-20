@@ -1,0 +1,99 @@
+import requests
+from bs4 import BeautifulSoup
+import csv
+import matplotlib.pyplot as plt
+
+# Function to scrape video game values for a specific console
+def scrape_console_data(console_url):
+    response = requests.get(console_url)
+    if response.status_code != 200:
+        return f"Failed to fetch data from {console_url}. HTTP Status Code: {response.status_code}"
+    
+    soup = BeautifulSoup(response.text, 'html.parser')
+    games = []
+    table_rows = soup.find_all('tr', class_='product')
+    for row in table_rows:
+        try:
+            title = row.find('td', class_='title').text.strip()
+            loose_price = row.find('td', class_='used_price').text.strip().replace('$', '').replace(',', '')
+            cib_price = row.find('td', class_='complete_price').text.strip().replace('$', '').replace(',', '')
+            new_price = row.find('td', class_='new_price').text.strip().replace('$', '').replace(',', '')
+
+            # Convert prices to float and filter out games with Loose Price <= $10
+            loose_price = float(loose_price)
+            cib_price = float(cib_price) if cib_price else 0.0
+            new_price = float(new_price) if new_price else 0.0
+
+            if loose_price > 10:  # Only include games above $10 Loose price
+                games.append({
+                    'title': title,
+                    'loose_price': loose_price,
+                    'cib_price': cib_price,
+                    'new_price': new_price
+                })
+        except (AttributeError, ValueError):
+            continue  # Skip rows with missing or invalid data
+    
+    return games
+
+# Function to scrape multiple consoles
+def scrape_multiple_consoles(console_urls):
+    all_games = {}
+    for console, url in console_urls.items():
+        print(f"Scraping data for {console}...")
+        games = scrape_console_data(url)
+        if isinstance(games, str):
+            print(games)
+        else:
+            # Sort games alphabetically by title
+            games = sorted(games, key=lambda x: x['title'])
+            all_games[console] = games
+            print(f"Found {len(games)} games for {console}.")
+    return all_games
+
+# Function to save data to a CSV file
+def save_to_csv(data, filename):
+    with open(filename, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Console", "Title", "Loose Price", "CIB Price", "New Price"])
+        for console, games in data.items():
+            for game in games:
+                writer.writerow([console, game['title'], game['loose_price'], game['cib_price'], game['new_price']])
+    print(f"Data saved to {filename}")
+
+# Function to visualize data
+def visualize_data(data):
+    console_names = []
+    average_prices = []
+
+    for console, games in data.items():
+        console_names.append(console)
+        avg_price = sum(game['loose_price'] for game in games) / len(games)
+        average_prices.append(avg_price)
+
+    # Create a bar chart
+    plt.figure(figsize=(10, 6))
+    plt.bar(console_names, average_prices, color='skyblue')
+    plt.title("Average Loose Prices by Console (Filtered > $10)")
+    plt.ylabel("Average Loose Price ($)")
+    plt.xlabel("Console")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+# Main program
+if __name__ == "__main__":
+    console_urls = {
+        "Super Nintendo": "https://www.pricecharting.com/console/super-nintendo",
+        "PlayStation 3": "https://www.pricecharting.com/console/playstation-3"
+        # Add more consoles as needed
+    }
+    
+    # Scrape data
+    game_data = scrape_multiple_consoles(console_urls)
+    
+    # Save data to a CSV file
+    save_to_csv(game_data, "video_game_prices_filtered_sorted.csv")
+    
+    # Visualize the average loose prices
+    visualize_data(game_data)
